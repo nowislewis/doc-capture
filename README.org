@@ -1,0 +1,426 @@
+#+TITLE: doc-capture
+#+AUTHOR: Lewis Liu
+#+DATE: 2024-12-24
+
+* 简介
+
+一个用于在文档查看器中捕获选中内容并自动生成 org-mode 文件的工具。
+
+** 功能特点
+
+- 支持多种文档格式：PDF, EPUB, DJVU, XPS, CBZ, CBR, MOBI, AZW, AZW3, FB2, PS
+- 支持多种文档查看器：Zathura, MuPDF, Evince, Okular, PDF Tools 等
+- 自动将选中的文本保存到同名 org 文件
+- 在 org 文件中自动生成回到原文档页面的链接
+- 简单易用的快捷键操作
+- 强大的后处理钩子系统
+- 可选的 org-inc 集成（增量学习）
+
+* 快速开始
+
+** 一键安装
+
+#+begin_src bash
+cd /path/to/doc-capture
+make install
+#+end_src
+
+** 基础配置
+
+在 =~/.emacs.d/init.el= 中添加：
+
+#+begin_src elisp
+;; 加载 doc-capture
+(add-to-list 'load-path "/path/to/doc-capture")
+(require 'doc-capture)
+#+end_src
+
+** 核心使用流程
+
+1. 在 Zathura 中打开 PDF 文档
+2. 选中文本
+3. 按 =Ctrl+C= 快捷键
+4. 内容自动保存到同名 .org 文件
+
+* 系统要求
+
+** 必需
+
+- Emacs (24+)
+- Bash
+- 文档查看器 (Zathura 推荐)
+
+** 可选
+
+- xclip (用于剪贴板操作)
+- org-inc (增量学习功能)
+
+* 安装
+
+** 自动安装（推荐）
+
+#+begin_src bash
+# 克隆项目
+git clone https://github.com/yourusername/doc-capture.git
+cd doc-capture
+
+# 一键安装
+make install
+
+# 检查依赖
+make check
+
+# 查看状态
+make status
+#+end_src
+
+** 手动安装
+
+1. 复制文件到目标位置
+2. 配置 Emacs
+3. 设置脚本权限
+
+详细步骤：
+
+#+begin_src bash
+# 创建目录
+mkdir -p ~/.config/zathura/scripts
+
+# 复制文件
+cp doc-capture.sh ~/.config/zathura/scripts/
+cp zathurarc ~/.config/zathura/
+
+# 设置权限
+chmod +x ~/.config/zathura/scripts/doc-capture.sh
+#+end_src
+
+Emacs 配置：
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/doc-capture")
+(require 'doc-capture)
+#+end_src
+
+* 配置
+
+** 基础配置选项
+
+#+begin_src elisp
+;; 选择文档查看器类型
+(setq doc-capture-viewer 'zathura)  ; 可选: zathura, mupdf, evince, okular, pdf-tools, custom
+
+;; 设置 org 文件保存目录
+(setq doc-capture-org-directory "~/Documents/reading-notes/")
+
+;; 自定义查看器命令（当 viewer 为 custom 时）
+(setq doc-capture-viewer-command "my-viewer %f %p")
+#+end_src
+
+** 自定义快捷键
+
+修改 =~/.config/zathura/zathurarc=：
+
+#+begin_example
+# 默认快捷键
+map <C-c> exec "bash ~/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\""
+
+# 自定义快捷键
+map <C-b> exec "bash ~/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\""
+#+end_example
+
+* org-inc 集成（推荐）
+
+** 什么是 org-inc
+
+[[https://github.com/bohonghuang/org-inc][org-inc]] 是一个强大的 Org-mode 增量学习工具，可以将捕获的内容自动转换为 SRS（间隔重复）卡片。
+
+** 环境准备
+
+#+begin_src elisp
+;; 在 ~/.emacs.d/init.el 中添加
+(add-to-list 'load-path "~/.emacs.d/lib/org-inc")
+(require 'org-inc)
+#+end_src
+
+** 启用集成（一行搞定）
+
+#+begin_src elisp
+(require 'doc-capture-org-inc-integration)
+#+end_src
+
+这会自动：
+- 加载 org-inc
+- 启用基础版本的 topic 处理器
+- 配置所有必要的钩子
+
+** 处理器类型
+
+*** topic（基础版本，默认）
+
+直接创建 org-inc topic 卡片，适合新手。
+
+#+begin_src elisp
+(setq doc-capture-org-inc-handler-type 'topic)
+(doc-capture-org-inc-auto-configure)
+#+end_src
+
+*** smart（智能版本，推荐）
+
+- 自动分类文档类型（PDF、电子书、DJVU）
+- 根据内容长度智能格式化
+- 自动设置学习优先级
+
+#+begin_src elisp
+(setq doc-capture-org-inc-handler-type 'smart)
+(doc-capture-org-inc-auto-configure)
+#+end_src
+
+*** conditional（条件版本）
+
+只对 PDF 和电子书使用 org-inc，其他文档类型保持原始格式。
+
+#+begin_src elisp
+(setq doc-capture-org-inc-handler-type 'conditional)
+(doc-capture-org-inc-auto-configure)
+#+end_src
+
+*** nil（禁用）
+
+#+begin_src elisp
+(setq doc-capture-org-inc-handler-type nil)
+(doc-capture-org-inc-auto-configure)
+#+end_src
+
+** 集成效果对比
+
+*** 基础捕获输出
+
+#+begin_example
+** Page 42
+这是选中的文本内容
+
+[[elisp:(doc-capture-open "/path/to/document.pdf" 42)][document.pdf]]
+#+end_example
+
+*** org-inc 集成后输出
+
+#+begin_example
+** document - 第42页
+:PROPERTIES:
+:ID: 20251224T170531_959155
+:END:
+:SRSITEMS:
+#+NAME: srsitem:20251224T170531_959155::topic
+#+ATTR_SRS: :algorithm topic :item-confirm org-inc-continue
+| ! | timestamp            | a_factor | action  |
+|---+----------------------+----------+---------|
+|   | 2025-12-24T09:05:31Z |      1.2 | :create |
+| * | 2025-12-25T09:05:31Z |          |         |
+:END:
+
+这是选中的文本内容
+
+[[elisp:(doc-capture-open "/path/to/document.pdf" 42)][document.pdf - 第42页]]
+#+end_example
+
+* 高级功能：后处理钩子
+
+** 基础钩子使用
+
+#+begin_src elisp
+(add-hook 'doc-capture-post-process-hook
+          (lambda (org-file page-num selected-text heading)
+            "自定义后处理"
+            (message "捕获到 %s 第 %s 页的内容" org-file page-num)))
+#+end_src
+
+** 启用/禁用钩子
+
+#+begin_src elisp
+;; 启用钩子（默认）
+(setq doc-capture-enable-hook t)
+
+;; 禁用钩子
+(setq doc-capture-enable-hook nil)
+#+end_src
+
+** 多钩子组合
+
+#+begin_src elisp
+;; 钩子1：记录日志
+(add-hook 'doc-capture-post-process-hook
+          (lambda (org-file page-num selected-text heading)
+            (message "处理: %s" org-file)))
+
+;; 钩子2：分类处理
+(add-hook 'doc-capture-post-process-hook
+          (lambda (org-file page-num selected-text heading)
+            (let ((ext (file-name-extension org-file)))
+              (cond
+               ((string= ext "pdf")
+                (message "PDF 文档特殊处理"))
+               ((member ext '("epub" "mobi"))
+                (message "电子书特殊处理"))))))
+#+end_src
+
+** 错误处理
+
+#+begin_src elisp
+(add-hook 'doc-capture-post-process-hook
+          (lambda (org-file page-num selected-text heading)
+            (condition-case err
+                (progn
+                  ;; 你的处理逻辑
+                  (message "处理成功"))
+              (error
+               (message "处理失败: %s" err)))))
+#+end_src
+
+* 示例输出
+
+当你在 Zathura 中打开 =example.pdf= 并捕获第 5 页的内容时：
+
+#+begin_example
+#+TITLE: example
+#+AUTHOR: 
+#+DATE: 2024-12-24 14:30
+
+,* Notes
+
+,** Page 5
+这里是你选中的文本内容...
+
+[[elisp:(doc-capture-open "/path/to/example.pdf" 5)][example.pdf - 第5页]]
+#+end_example
+
+点击链接可以直接跳回到原文档的第 5 页。
+
+* Makefile 命令
+
+| 命令              | 说明                     |
+|-------------------+--------------------------|
+| =make install=    | 安装工具（包含备份）     |
+| =make backup=     | 备份现有配置             |
+| =make uninstall=  | 卸载                     |
+| =make check=      | 检查依赖                 |
+| =make status=     | 显示安装状态             |
+| =make clean=      | 清理临时文件             |
+| =make help=       | 显示帮助信息             |
+
+* 故障排除
+
+** 快捷键不工作
+
+#+begin_src bash
+# 检查脚本权限
+chmod +x ~/.config/zathura/scripts/doc-capture.sh
+
+# 检查 Emacs 配置
+emacs --batch --eval "(require 'doc-capture)"
+#+end_src
+
+** 剪贴板内容为空
+
+#+begin_src bash
+# Ubuntu/Debian
+sudo apt install xclip
+
+# Arch Linux
+sudo pacman -S xclip
+
+# macOS
+brew install xclip
+#+end_src
+
+** Emacs 函数未找到
+
+#+begin_src elisp
+;; 确保正确加载
+(add-to-list 'load-path "/path/to/doc-capture")
+(require 'doc-capture)
+
+;; 检查函数是否存在
+(fboundp 'doc-capture-process)  ; 应该返回 t
+#+end_src
+
+** org-inc 集成失败
+
+#+begin_src bash
+# 检查 org-inc 是否安装
+ls ~/.emacs.d/lib/org-inc/
+
+# 检查 org-srs 是否安装
+ls ~/.emacs.d/lib/org-srs/
+#+end_src
+
+#+begin_src elisp
+;; 启用调试模式
+(setq debug-on-error t)
+
+;; 检查 feature 是否加载
+(featurep 'org-inc)  ; 应该返回 t
+(featurep 'doc-capture-org-inc-integration)  ; 应该返回 t
+#+end_src
+
+* 工作原理
+
+1. 用户在文档查看器中选中文本
+2. 按快捷键 (Ctrl+C) 触发脚本
+3. 脚本通过剪贴板获取选中的文本
+4. 脚本获取当前文档路径和页码
+5. 调用 Emacs 函数 =doc-capture-process=
+6. Emacs 在同名 .org 文件中创建新条目
+7. 添加返回原文档页面的链接
+8. 执行后处理钩子（如果启用）
+
+* 项目结构
+
+#+begin_example
+doc-capture/
+├── doc-capture.el                      # 核心 Emacs Lisp 代码
+├── doc-capture-org-inc-integration.el  # org-inc 集成模块
+├── doc-capture.sh                      # Shell 捕获脚本
+├── zathurarc                           # Zathura 配置文件
+├── Makefile                            # 自动安装脚本
+└── README.org                          # 本文档
+#+end_example
+
+* 许可证
+
+本项目基于 GNU General Public License v3 许可证发布。
+
+详见 [[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL-3.0]]。
+
+* 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+** 贡献指南
+
+1. Fork 本项目
+2. 创建特性分支 (=git checkout -b feature/amazing-feature=)
+3. 提交更改 (=git commit -m 'Add amazing feature'=)
+4. 推送到分支 (=git push origin feature/amazing-feature=)
+5. 开启 Pull Request
+
+** 报告问题
+
+请在 GitHub Issues 中报告问题，包含：
+- 系统环境（OS, Emacs 版本）
+- 错误信息
+- 重现步骤
+
+* 相关链接
+
+- [[https://github.com/bohonghuang/org-inc][org-inc]] - Org-mode 增量学习工具
+- [[https://pwmt.org/projects/zathura/][Zathura]] - 轻量级文档查看器
+- [[https://orgmode.org/][Org Mode]] - Emacs 的组织工具
+
+* 致谢
+
+感谢所有贡献者和使用者！
+
+特别感谢：
+- org-inc 项目作者 [[https://github.com/bohonghuang][bohonghuang]]
+- Zathura 开发团队
+- Emacs 和 Org-mode 社区

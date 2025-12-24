@@ -76,12 +76,41 @@
                  (directory :tag "Custom directory"))
   :group 'doc-capture)
 
+(defvar doc-capture-post-process-hook nil
+  "文档捕获完成后的处理钩子。
+该钩子会在内容添加到 org 文件后被调用，可以用于自定义格式化或其他处理。
+每个钩子函数接受三个参数：
+  - ORG-FILE-PATH: org 文件路径
+  - PAGE-NUM: 页码  
+  - SELECTED-TEXT: 选中的文本
+  - HEADING: 生成的 heading 文本
+
+示例：
+  (defun my-doc-capture-handler (org-file page-num selected-text heading)
+    \"对捕获的内容进行自定义处理\"
+    (message \"处理捕获的内容\"))
+  
+  (add-hook 'doc-capture-post-process-hook 'my-doc-capture-handler)
+  
+要使用 org-inc，可以添加钩子函数：
+  (add-hook 'doc-capture-post-process-hook
+            (lambda (org-file page-num selected-text heading)
+              (when (require 'org-inc nil t)
+                (org-inc-convert-heading heading))))")
+
+(defcustom doc-capture-enable-hook t
+  "是否启用后处理钩子。
+如果设置为 nil，则在文档捕获完成后不会执行钩子函数。"
+  :type 'boolean
+  :group 'doc-capture)
+
 (defun doc-capture-open (file-path page-num)
   "用配置的查看器打开 FILE-PATH 并跳转到 PAGE-NUM。"
   (pcase doc-capture-viewer
     ('zathura
      (start-process "doc-viewer" nil "zathura" "--page" (format "%s" page-num) file-path))
     ('mupdf
+
      ;; mupdf 页码从 1 开始，不需要特殊处理
      (start-process "doc-viewer" nil "mupdf" file-path (format "%s" page-num)))
     ('evince
@@ -159,7 +188,23 @@ ORG-FILE-PATH: org 文件路径（已废弃，将自动计算）"
       (insert "\n")
       
       ;; 保存文件
-      (save-buffer))
+      (save-buffer)
+      
+      ;; 执行后处理钩子（如果有）
+      (when (and doc-capture-enable-hook
+                 (boundp 'doc-capture-post-process-hook)
+                 doc-capture-post-process-hook)
+        (let* ((heading (concat "** Page " page-num))
+               (selected-text-safe (or selected-text "")))
+          ;; 按顺序执行所有钩子函数
+          (dolist (hook-function doc-capture-post-process-hook)
+            (when (and hook-function (fboundp hook-function))
+              (condition-case err
+                  (funcall hook-function org-file page-num selected-text-safe heading)
+                (error
+                 (message "doc-capture 钩子函数 %s 执行失败: %s" 
+                         hook-function
+                         (error-message-string err)))))))))
     
     ;; 返回消息
     (message "已捕获到 %s" org-file)))
