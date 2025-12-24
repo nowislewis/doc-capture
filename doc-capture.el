@@ -154,60 +154,74 @@ ORG-FILE-PATH: org 文件路径（已废弃，将自动计算）"
     (unless (file-directory-p org-dir)
       (make-directory org-dir t))
     
-    ;; 打开 org 文件
-    (setq org-buffer (find-file-noselect org-file))
-    
-    ;; 确保 org 文件存在并设置内容
-    (with-current-buffer org-buffer
-      ;; 如果文件是空的，添加头部信息
-      (when (= (buffer-size) 0)
-        (insert "#+TITLE: " file-base "\n")
-        (insert "#+AUTHOR: \n")
-        (insert "#+DATE: " (format-time-string "%Y-%m-%d %H:%M") "\n\n")
-        (insert "* Notes\n\n"))
+    ;; 检查文件是否是新建的
+    (let ((is-new-file (not (file-exists-p org-file))))
       
-      ;; 切换到 Notes 部分
-      (goto-char (point-max))
+      ;; 打开或创建 org 文件（静默，不提示）
+      (setq org-buffer (or (find-buffer-visiting org-file)
+                          (let ((buf (create-file-buffer org-file)))
+                            (with-current-buffer buf
+                              (setq buffer-file-name org-file)
+                              (when (file-exists-p org-file)
+                                (insert-file-contents org-file))
+                              (org-mode)
+                              (setq buffer-file-coding-system 'utf-8-unix))
+                            buf)))
       
-      ;; 如果当前不在 Notes 部分，导航到那里
-      (unless (re-search-backward "^* Notes" nil t)
-        (goto-char (point-max)))
+      ;; 确保 org 文件存在并设置内容
+      (with-current-buffer org-buffer
+        ;; 如果文件是空的，添加头部信息
+        (when (= (buffer-size) 0)
+          (insert "#+TITLE: " file-base "\n")
+          (insert "#+AUTHOR: \n")
+          (insert "#+DATE: " (format-time-string "%Y-%m-%d %H:%M") "\n\n")
+          (insert "* Notes\n\n"))
+        
+        ;; 切换到 Notes 部分
+        (goto-char (point-max))
+        
+        ;; 如果当前不在 Notes 部分，导航到那里
+        (unless (re-search-backward "^* Notes" nil t)
+          (goto-char (point-max)))
+        
+        ;; 移动到 Notes 部分末尾
+        (goto-char (point-max))
+        
+        ;; 添加新的 entry
+        (insert "** Page " page-num "\n")
+        
+        ;; 添加选中的文本（如果有）
+        (when (and selected-text (not (string-empty-p selected-text)))
+          (insert selected-text "\n\n"))
+        
+        ;; 添加链接 - 使用统一的打开函数
+        (insert "[[elisp:(doc-capture-open \"" file-path "\" " page-num ")][" file-name "]]\n")
+        (insert "\n")
+        
+        ;; 保存文件（静默，不提示）
+        (write-region (point-min) (point-max) org-file nil 'silent)
+        (set-buffer-modified-p nil)
+        
+        ;; 执行后处理钩子（如果有）
+        (when (and doc-capture-enable-hook
+                   (boundp 'doc-capture-post-process-hook)
+                   doc-capture-post-process-hook)
+          (let* ((heading (concat "** Page " page-num))
+                 (selected-text-safe (or selected-text "")))
+            ;; 按顺序执行所有钩子函数
+            (dolist (hook-function doc-capture-post-process-hook)
+              (when (and hook-function (fboundp hook-function))
+                (condition-case err
+                    (funcall hook-function org-file page-num selected-text-safe heading)
+                  (error
+                   (message "doc-capture 钩子函数 %s 执行失败: %s" 
+                           hook-function
+                           (error-message-string err)))))))))
       
-      ;; 移动到 Notes 部分末尾
-      (goto-char (point-max))
-      
-      ;; 添加新的 entry
-      (insert "** Page " page-num "\n")
-      
-      ;; 添加选中的文本（如果有）
-      (when (and selected-text (not (string-empty-p selected-text)))
-        (insert selected-text "\n\n"))
-      
-      ;; 添加链接 - 使用统一的打开函数
-      (insert "[[elisp:(doc-capture-open \"" file-path "\" " page-num ")][" file-name "]]\n")
-      (insert "\n")
-      
-      ;; 保存文件
-      (save-buffer)
-      
-      ;; 执行后处理钩子（如果有）
-      (when (and doc-capture-enable-hook
-                 (boundp 'doc-capture-post-process-hook)
-                 doc-capture-post-process-hook)
-        (let* ((heading (concat "** Page " page-num))
-               (selected-text-safe (or selected-text "")))
-          ;; 按顺序执行所有钩子函数
-          (dolist (hook-function doc-capture-post-process-hook)
-            (when (and hook-function (fboundp hook-function))
-              (condition-case err
-                  (funcall hook-function org-file page-num selected-text-safe heading)
-                (error
-                 (message "doc-capture 钩子函数 %s 执行失败: %s" 
-                         hook-function
-                         (error-message-string err)))))))))
-    
-    ;; 返回消息
-    (message "已捕获到 %s" org-file)))
+      ;; 返回消息，说明是新建还是更新
+      (if is-new-file
+          (message "✓ 已创建新文件并捕获到 %s" org-file)
+        (message "✓ 已捕获到 %s" org-file)))))
 
 (provide 'doc-capture)
 ;;; doc-capture.el ends here

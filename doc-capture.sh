@@ -45,19 +45,22 @@ echo "TEMP_FILE: $TEMP_FILE" >> "$DEBUG_LOG"
 echo "TEMP_FILE content:" >> "$DEBUG_LOG"
 cat "$TEMP_FILE" >> "$DEBUG_LOG"
 
-# 调用 emacs 函数处理
-emacsclient --eval "
-(let* ((file-path \"$FILE_PATH\")
-       (page-num \"$PAGE_NUM\")
-       (temp-file \"$TEMP_FILE\")
-       (selected-text (when (file-exists-p temp-file)
-                        (with-temp-buffer
-                          (insert-file-contents temp-file)
-                          (buffer-string))))
-       (org-file-path \"$ORG_FILE\"))
-  (message \"Debug: selected-text length: %d\" (length selected-text))
-  (message \"Debug: selected-text: %s\" selected-text)
-  (delete-file temp-file)
-  (doc-capture-process file-path page-num selected-text org-file-path))" 2>&1 | tee -a "$DEBUG_LOG"
+# 调用 emacs 函数处理（使用 batch 模式，非交互式）
+# 注意：需要确保 doc-capture.el 在 Emacs load-path 中
+emacs --batch --eval "
+(progn
+  (add-to-list 'load-path \"/home/lewisliu/Documents/code/doc-capture\")
+  (require 'doc-capture)
+  (let* ((file-path \"$FILE_PATH\")
+         (page-num \"$PAGE_NUM\")
+         (temp-file \"$TEMP_FILE\")
+         (selected-text (when (file-exists-p temp-file)
+                          (with-temp-buffer
+                            (insert-file-contents temp-file)
+                            (buffer-string))))
+         (org-file-path \"$ORG_FILE\"))
+    (when (file-exists-p temp-file)
+      (delete-file temp-file))
+    (doc-capture-process file-path page-num selected-text org-file-path)))" 2>&1 | tee -a "$DEBUG_LOG"
 
 echo "Script completed" >> "$DEBUG_LOG"
