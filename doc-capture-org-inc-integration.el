@@ -17,38 +17,13 @@
 
 (defcustom doc-capture-org-inc-handler-type 'topic
   "org-inc 集成处理器类型。
-- topic: 基础版本，适合新手
-- smart: 智能版本，根据文档类型自动调整
+- topic: 基础版本，为每个捕获创建 org-inc topic
 - conditional: 条件版本，只对 PDF/电子书使用 org-inc
 - nil: 禁用 org-inc 集成"
   :type '(choice (const :tag "基础版本" topic)
-                 (const :tag "智能版本" smart)
                  (const :tag "条件版本" conditional)
                  (const :tag "禁用" nil))
   :group 'doc-capture)
-
-;;; 辅助函数
-
-(defun doc-capture-org-inc--ensure-notes-section ()
-  "确保 Notes 部分存在，返回其末尾位置。"
-  (goto-char (point-max))
-  (unless (re-search-backward "^\\* Notes" nil t)
-    (goto-char (point-max))
-    (insert "* Notes\n\n"))
-  (goto-char (point-max)))
-
-(defun doc-capture-org-inc--create-topic (title)
-  "创建 org-inc topic，标题为 TITLE。"
-  (unless (org-id-get)
-    (org-id-get-create))
-  (org-srs-item-new 'topic)
-  (message "✓ 已创建 org-inc topic: %s" title))
-
-(defun doc-capture-org-inc--insert-link (org-file page-num)
-  "插入返回原文档的链接。"
-  (let ((file-name (file-name-nondirectory org-file)))
-    (insert (format "[[elisp:(doc-capture-open \"%s\" %s)][%s - 第%s页]]\n\n"
-                    org-file page-num file-name page-num))))
 
 ;;; 处理器函数
 
@@ -80,43 +55,6 @@
             (save-buffer)))
       (error (message "❌ org-inc 集成失败: %s" (error-message-string err))))))
 
-(defun doc-capture-org-inc-smart-handler (org-file page-num selected-text heading)
-  "智能版本：根据文档类型和内容长度自动调整。"
-  (when (and selected-text (> (length selected-text) 0))
-    (condition-case err
-        (save-excursion
-          (goto-char (point-max))
-          (when (re-search-backward (format "^\\*\\* Page %s$" page-num) nil t)
-            (end-of-line)
-            
-            ;; 确保有 ID
-            (unless (org-id-get)
-              (org-id-get-create))
-            
-            (let* ((file-ext (file-name-extension org-file))
-                   (file-base (file-name-sans-extension
-                              (file-name-nondirectory org-file)))
-                   (category (cond ((string= file-ext "pdf") "PDF")
-                                 ((member file-ext '("epub" "mobi" "azw" "azw3")) "电子书")
-                                 ((string= file-ext "djvu") "DJVU")
-                                 (t "文档")))
-                   (priority (cond ((string= file-ext "pdf") 0.9)
-                                 ((member file-ext '("epub" "mobi")) 0.7)
-                                 (t 0.5)))
-                   (title (format "[%s] %s - 第%s页" category file-base page-num)))
-              
-              ;; 创建 topic
-              (org-srs-item-new 'topic)
-              
-              ;; 设置优先级
-              (org-inc-priority-set priority)
-              
-              (message "✓ 智能 topic 创建成功: %s (优先级: %.1f)" title priority))
-            
-            ;; 保存 buffer
-            (save-buffer)))
-      (error (message "❌ 智能 org-inc 处理失败: %s" (error-message-string err))))))
-
 (defun doc-capture-org-inc-conditional-handler (org-file page-num selected-text heading)
   "条件版本：只对 PDF 和电子书使用 org-inc。"
   (let ((file-ext (file-name-extension org-file)))
@@ -131,7 +69,6 @@
   (when (boundp 'doc-capture-post-process-hook)
     ;; 清除旧的 handler
     (dolist (handler '(doc-capture-org-inc-topic-handler
-                      doc-capture-org-inc-smart-handler
                       doc-capture-org-inc-conditional-handler))
       (remove-hook 'doc-capture-post-process-hook handler))
     
@@ -140,7 +77,6 @@
                doc-capture-org-inc-handler-type)
       (let ((handler (pcase doc-capture-org-inc-handler-type
                       ('topic 'doc-capture-org-inc-topic-handler)
-                      ('smart 'doc-capture-org-inc-smart-handler)
                       ('conditional 'doc-capture-org-inc-conditional-handler))))
         (when handler
           (add-hook 'doc-capture-post-process-hook handler)
