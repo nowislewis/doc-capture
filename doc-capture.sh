@@ -45,22 +45,46 @@ echo "TEMP_FILE: $TEMP_FILE" >> "$DEBUG_LOG"
 echo "TEMP_FILE content:" >> "$DEBUG_LOG"
 cat "$TEMP_FILE" >> "$DEBUG_LOG"
 
-# 调用 emacs 函数处理（使用 batch 模式，非交互式）
-# 注意：需要确保 doc-capture.el 在 Emacs load-path 中
-emacs --batch --eval "
-(progn
-  (add-to-list 'load-path \"/home/lewisliu/Documents/code/doc-capture\")
-  (require 'doc-capture)
-  (let* ((file-path \"$FILE_PATH\")
-         (page-num \"$PAGE_NUM\")
-         (temp-file \"$TEMP_FILE\")
-         (selected-text (when (file-exists-p temp-file)
-                          (with-temp-buffer
-                            (insert-file-contents temp-file)
-                            (buffer-string))))
-         (org-file-path \"$ORG_FILE\"))
-    (when (file-exists-p temp-file)
-      (delete-file temp-file))
-    (doc-capture-process file-path page-num selected-text org-file-path)))" 2>&1 | tee -a "$DEBUG_LOG"
+# 检查 Emacs server 是否运行
+if ! emacsclient --eval "t" &>/dev/null; then
+    ERROR_MSG="❌ 错误: Emacs server 未运行。请在 Emacs 中执行 'M-x server-start' 或在配置中添加 (server-start)"
+    echo "$ERROR_MSG" | tee -a "$DEBUG_LOG"
+    notify-send "doc-capture 错误" "$ERROR_MSG"
+    exit 1
+fi
+
+# 检查必需的函数和变量是否存在
+CHECK_RESULT=$(emacsclient --eval "
+(let ((errors '()))
+  (unless (fboundp 'doc-capture-process)
+    (push \"函数 'doc-capture-process' 未定义，请确保已加载 doc-capture.el\" errors))
+  (unless (boundp 'doc-capture-org-directory)
+    (push \"变量 'doc-capture-org-directory' 未定义，请检查配置\" errors))
+  (if errors
+      (mapconcat 'identity (reverse errors) \"; \")
+    nil))" 2>&1)
+
+if [ "$CHECK_RESULT" != "nil" ]; then
+    ERROR_MSG="❌ doc-capture 配置错误: $CHECK_RESULT"
+    echo "$ERROR_MSG" | tee -a "$DEBUG_LOG"
+    notify-send "doc-capture 错误" "$ERROR_MSG"
+    exit 1
+fi
+
+echo "✓ Emacs server 检查通过" >> "$DEBUG_LOG"
+
+# 调用 emacs 函数处理（使用 emacsclient）
+emacsclient --eval "
+(let* ((file-path \"$FILE_PATH\")
+       (page-num \"$PAGE_NUM\")
+       (temp-file \"$TEMP_FILE\")
+       (selected-text (when (file-exists-p temp-file)
+                        (with-temp-buffer
+                          (insert-file-contents temp-file)
+                          (buffer-string))))
+       (org-file-path \"$ORG_FILE\"))
+  (when (file-exists-p temp-file)
+    (delete-file temp-file))
+  (doc-capture-process file-path page-num selected-text org-file-path))" 2>&1 | tee -a "$DEBUG_LOG"
 
 echo "Script completed" >> "$DEBUG_LOG"
