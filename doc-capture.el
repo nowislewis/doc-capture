@@ -198,11 +198,7 @@ ORG-FILE-PATH: org 文件路径（已废弃，将自动计算）"
         (insert "[[elisp:(doc-capture-open \"" file-path "\" " page-num ")][" file-name "]]\n")
         (insert "\n")
         
-        ;; 保存文件（静默，不提示）
-        (write-region (point-min) (point-max) org-file nil 'silent)
-        (set-buffer-modified-p nil)
-        
-        ;; 执行后处理钩子（如果有）
+        ;; 执行后处理钩子（在保存之前，在当前 buffer 中）
         (when (and doc-capture-enable-hook
                    (boundp 'doc-capture-post-process-hook)
                    doc-capture-post-process-hook)
@@ -216,7 +212,11 @@ ORG-FILE-PATH: org 文件路径（已废弃，将自动计算）"
                   (error
                    (message "doc-capture 钩子函数 %s 执行失败: %s" 
                            hook-function
-                           (error-message-string err)))))))))
+                           (error-message-string err))))))))
+        
+        ;; 保存文件（静默，不提示）- 在 hook 执行之后
+        (write-region (point-min) (point-max) org-file nil 'silent)
+        (set-buffer-modified-p nil))
       
       ;; 返回消息，说明是新建还是更新
       (if is-new-file

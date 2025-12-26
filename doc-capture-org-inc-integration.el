@@ -52,75 +52,70 @@
 
 ;;; 处理器函数
 
-(defun doc-capture-org-inc-topic-handler (org-file page-num selected-text _heading)
-  "基础版本：在捕获位置创建 org-inc topic 格式的卡片。"
+(defun doc-capture-org-inc-topic-handler (org-file page-num selected-text heading)
+  "基础版本：在捕获位置创建 org-inc topic 格式的卡片。
+此函数在 doc-capture 已经插入内容后被调用，会在当前 buffer 中添加 org-inc 属性。"
   (when (and selected-text (> (length selected-text) 0))
     (condition-case err
-        (with-current-buffer (find-file-noselect org-file)
-          (doc-capture-org-inc--ensure-notes-section)
-          
-          (let* ((file-base (file-name-sans-extension
-                            (file-name-nondirectory org-file)))
-                 (title (format "%s - 第%s页" file-base page-num)))
+        (save-excursion
+          ;; 找到刚刚插入的 heading (应该是最后一个 ** Page X)
+          (goto-char (point-max))
+          (when (re-search-backward (format "^\\*\\* Page %s$" page-num) nil t)
+            ;; 移动到 heading 的末尾
+            (end-of-line)
             
-            ;; 插入标题和内容
-            (insert title "\n" selected-text "\n\n")
+            ;; 确保有 ID
+            (unless (org-id-get)
+              (org-id-get-create))
             
             ;; 创建 topic
-            (save-excursion
-              (forward-line -2)
-              (end-of-line)
-              (doc-capture-org-inc--create-topic title))
+            (org-srs-item-new 'topic)
             
-            ;; 添加链接
-            (doc-capture-org-inc--insert-link org-file page-num)
+            (let* ((file-base (file-name-sans-extension
+                              (file-name-nondirectory org-file)))
+                   (title (format "%s - 第%s页" file-base page-num)))
+              (message "✓ 已创建 org-inc topic: %s" title))
+            
+            ;; 保存 buffer
             (save-buffer)))
-      (error (message "❌ org-inc 集成失败: %s" err)))))
+      (error (message "❌ org-inc 集成失败: %s" (error-message-string err))))))
 
-(defun doc-capture-org-inc-smart-handler (org-file page-num selected-text _heading)
+(defun doc-capture-org-inc-smart-handler (org-file page-num selected-text heading)
   "智能版本：根据文档类型和内容长度自动调整。"
   (when (and selected-text (> (length selected-text) 0))
     (condition-case err
-        (with-current-buffer (find-file-noselect org-file)
-          (doc-capture-org-inc--ensure-notes-section)
-          
-          (let* ((file-ext (file-name-extension org-file))
-                 (file-base (file-name-sans-extension
-                            (file-name-nondirectory org-file)))
-                 ;; 文档分类
-                 (category (cond ((string= file-ext "pdf") "PDF")
-                               ((member file-ext '("epub" "mobi" "azw" "azw3")) "电子书")
-                               ((string= file-ext "djvu") "DJVU")
-                               (t "文档")))
-                 ;; 优先级
-                 (priority (cond ((string= file-ext "pdf") 0.9)
-                               ((member file-ext '("epub" "mobi")) 0.7)
-                               (t 0.5)))
-                 (title (format "[%s] %s - 第%s页" category file-base page-num))
-                 (content-length (length selected-text)))
+        (save-excursion
+          (goto-char (point-max))
+          (when (re-search-backward (format "^\\*\\* Page %s$" page-num) nil t)
+            (end-of-line)
             
-            ;; 插入标题
-            (insert title "\n")
+            ;; 确保有 ID
+            (unless (org-id-get)
+              (org-id-get-create))
             
-            ;; 根据长度调整内容格式
-            (if (> content-length 200)
-                (insert (format "内容摘要 (%d 字符):\n%s...\n\n完整内容请参见原文链接。\n\n"
-                              content-length
-                              (substring selected-text 0 (min 100 content-length))))
-              (insert selected-text "\n\n"))
-            
-            ;; 创建 topic 并设置优先级
-            (save-excursion
-              (forward-line -3)
-              (end-of-line)
-              (doc-capture-org-inc--create-topic title)
+            (let* ((file-ext (file-name-extension org-file))
+                   (file-base (file-name-sans-extension
+                              (file-name-nondirectory org-file)))
+                   (category (cond ((string= file-ext "pdf") "PDF")
+                                 ((member file-ext '("epub" "mobi" "azw" "azw3")) "电子书")
+                                 ((string= file-ext "djvu") "DJVU")
+                                 (t "文档")))
+                   (priority (cond ((string= file-ext "pdf") 0.9)
+                                 ((member file-ext '("epub" "mobi")) 0.7)
+                                 (t 0.5)))
+                   (title (format "[%s] %s - 第%s页" category file-base page-num)))
+              
+              ;; 创建 topic
+              (org-srs-item-new 'topic)
+              
+              ;; 设置优先级
               (org-inc-priority-set priority)
+              
               (message "✓ 智能 topic 创建成功: %s (优先级: %.1f)" title priority))
             
-            ;; 添加链接
-            (doc-capture-org-inc--insert-link org-file page-num)
+            ;; 保存 buffer
             (save-buffer)))
-      (error (message "❌ 智能 org-inc 处理失败: %s" err)))))
+      (error (message "❌ 智能 org-inc 处理失败: %s" (error-message-string err))))))
 
 (defun doc-capture-org-inc-conditional-handler (org-file page-num selected-text heading)
   "条件版本：只对 PDF 和电子书使用 org-inc。"

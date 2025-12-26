@@ -2,4 +2,4 @@
 set selection-clipboard clipboard
 
 # 文档捕获快捷键 - 支持多种文档格式
-map <C-c> exec "bash $HOME/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\""
+map <C-c> exec "bash -c 'bash $HOME/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\"'"
