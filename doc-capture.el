@@ -21,23 +21,28 @@
 
 ;;; Commentary:
 
-;; 这个文件包含了处理文档查看器捕获内容的函数。
-;; 主要功能是自动将选中的文本保存到同名 org 文件中。
+;; 使用 org-capture 模板处理文档查看器捕获的内容。
+;; 外部脚本调用 doc-capture-process，内部通过 org-capture 完成捕获。
 ;; 支持多种文档格式：PDF, EPUB, DJVU, XPS, CBZ 等。
 ;; 支持多种查看器：zathura, mupdf, evince, okular, pdf-tools 等。
 
 ;;; Code:
 
 (require 'org)
+(require 'org-capture)
 
-;; 支持的文档格式
+;;; 自定义变量
+
+(defgroup doc-capture nil
+  "Document capture to org files."
+  :group 'org)
+
 (defcustom doc-capture-supported-extensions
   '("pdf" "epub" "djvu" "xps" "cbz" "cbr" "mobi" "azw" "azw3" "fb2" "ps")
   "支持的文档格式扩展名列表。"
   :type '(repeat string)
   :group 'doc-capture)
 
-;; 可配置的文档查看器设置
 (defcustom doc-capture-viewer 'zathura
   "文档查看器类型。
 可选值：
@@ -69,159 +74,131 @@
 
 (defcustom doc-capture-org-directory nil
   "存储 org 笔记文件的目录。
-如果设置为 nil，则 org 文件保存在文档文件的同一目录。
-如果设置为目录路径，则所有 org 文件保存到该目录。
-示例：\"~/Documents/reading-notes/\""
+nil 表示与文档同目录，否则统一保存到指定目录。"
   :type '(choice (const :tag "Same as document directory" nil)
                  (directory :tag "Custom directory"))
   :group 'doc-capture)
 
-(defvar doc-capture-post-process-hook nil
-  "文档捕获完成后的处理钩子。
-该钩子会在内容添加到 org 文件后被调用，可以用于自定义格式化或其他处理。
-每个钩子函数接受三个参数：
-  - ORG-FILE-PATH: org 文件路径
-  - PAGE-NUM: 页码  
-  - SELECTED-TEXT: 选中的文本
-  - HEADING: 生成的 heading 文本
-
-示例：
-  (defun my-doc-capture-handler (org-file page-num selected-text heading)
-    \"对捕获的内容进行自定义处理\"
-    (message \"处理捕获的内容\"))
-  
-  (add-hook 'doc-capture-post-process-hook 'my-doc-capture-handler)
-  
-要使用 org-inc，可以添加钩子函数：
-  (add-hook 'doc-capture-post-process-hook
-            (lambda (org-file page-num selected-text heading)
-              (when (require 'org-inc nil t)
-                (org-inc-convert-heading heading))))")
-
-(defcustom doc-capture-enable-hook t
-  "是否启用后处理钩子。
-如果设置为 nil，则在文档捕获完成后不会执行钩子函数。"
-  :type 'boolean
+(defcustom doc-capture-template-key "c"
+  "org-capture 模板的 key。"
+  :type 'string
   :group 'doc-capture)
+
+;;; 内部变量
+
+(defvar doc-capture--context nil
+  "当前捕获上下文 (plist): (:file FILE :page PAGE :text TEXT).")
+
+;;; 核心函数
 
 (defun doc-capture-open (file-path page-num)
   "用配置的查看器打开 FILE-PATH 并跳转到 PAGE-NUM。"
-  (pcase doc-capture-viewer
-    ('zathura
-     (start-process "doc-viewer" nil "zathura" "--page" (format "%s" page-num) file-path))
-    ('mupdf
-
-     ;; mupdf 页码从 1 开始，不需要特殊处理
-     (start-process "doc-viewer" nil "mupdf" file-path (format "%s" page-num)))
-    ('evince
-     (start-process "doc-viewer" nil "evince" "--page-label" (format "%s" page-num) file-path))
-    ('okular
-     (start-process "doc-viewer" nil "okular" "--page" (format "%s" page-num) file-path))
-    ('pdf-tools
-     (find-file file-path)
-     (pdf-view-goto-page (string-to-number (format "%s" page-num))))
-    ('custom
+  (let ((page-str (format "%s" page-num)))
+    (pcase doc-capture-viewer
+      ('pdf-tools
+       (find-file file-path)
+       (pdf-view-goto-page (string-to-number page-str)))
+      ('custom
      (if doc-capture-viewer-command
-         (let* ((cmd (replace-regexp-in-string "%f" file-path doc-capture-viewer-command))
-                (cmd (replace-regexp-in-string "%p" (format "%s" page-num) cmd)))
-           (start-process-shell-command "doc-viewer" nil cmd))
+           (let ((cmd (thread-last doc-capture-viewer-command
+                        (replace-regexp-in-string "%f" file-path)
+                        (replace-regexp-in-string "%p" page-str))))
+             (start-process-shell-command "doc-viewer" nil cmd))
        (error "未设置 doc-capture-viewer-command")))
-    (_
-     (error "未知的文档查看器类型: %s" doc-capture-viewer))))
+      (_
+       (let ((args (pcase doc-capture-viewer
+                     ('zathura (list "zathura" "--page" page-str file-path))
+                     ('mupdf (list "mupdf" file-path page-str))
+                     ('evince (list "evince" "--page-label" page-str file-path))
+                     ('okular (list "okular" "--page" page-str file-path))
+                     (_ (error "未知查看器: %s" doc-capture-viewer)))))
+         (apply #'start-process "doc-viewer" nil args))))))
 
-;; 为不同文档格式设置打开方式
-(dolist (ext doc-capture-supported-extensions)
-  (add-to-list 'org-file-apps (cons (concat "\\." ext "\\'") 'default)))
+;;; org-capture 模板辅助函数
 
-(defun doc-capture-process (file-path page-num selected-text org-file-path)
-  "处理文档捕获的内容。
-FILE-PATH: 原始文件路径
-PAGE-NUM: 页码
-SELECTED-TEXT: 选中的文本
-ORG-FILE-PATH: org 文件路径（已废弃，将自动计算）"
-  (let* ((file-dir (file-name-directory file-path))
-         (file-name (file-name-nondirectory file-path))
-         (file-base (file-name-sans-extension file-name))
-         (file-ext (file-name-extension file-name))
-         ;; 根据配置决定 org 文件的保存位置
-         (org-dir (if doc-capture-org-directory
-                      (expand-file-name doc-capture-org-directory)
-                    file-dir))
-         (org-file (expand-file-name (concat file-base ".org") org-dir))
-         (org-buffer nil))
-    
-    ;; 确保目标目录存在
+(defun doc-capture--get-target-file ()
+  "计算目标 org 文件路径，自动创建文件头。"
+  (unless doc-capture--context
+    (error "doc-capture--context 为空"))
+  (let* ((file-path (plist-get doc-capture--context :file))
+         (file-base (file-name-sans-extension (file-name-nondirectory file-path)))
+         (org-dir (or (and doc-capture-org-directory
+                           (expand-file-name doc-capture-org-directory))
+                      (file-name-directory file-path)))
+         (org-file (expand-file-name (concat file-base ".org") org-dir)))
     (unless (file-directory-p org-dir)
       (make-directory org-dir t))
-    
-    ;; 检查文件是否是新建的
-    (let ((is-new-file (not (file-exists-p org-file))))
-      
-      ;; 打开或创建 org 文件（静默，不提示）
-      (setq org-buffer (or (find-buffer-visiting org-file)
-                          (let ((buf (create-file-buffer org-file)))
-                            (with-current-buffer buf
-                              (setq buffer-file-name org-file)
-                              (when (file-exists-p org-file)
-                                (insert-file-contents org-file))
-                              (org-mode)
-                              (setq buffer-file-coding-system 'utf-8-unix))
-                            buf)))
-      
-      ;; 确保 org 文件存在并设置内容
-      (with-current-buffer org-buffer
-        ;; 如果文件是空的，添加头部信息
-        (when (= (buffer-size) 0)
-          (insert "#+TITLE: " file-base "\n")
-          (insert "#+AUTHOR: \n")
-          (insert "#+DATE: " (format-time-string "%Y-%m-%d %H:%M") "\n\n")
-          (insert "* Notes\n\n"))
-        
-        ;; 切换到 Notes 部分
-        (goto-char (point-max))
-        
-        ;; 如果当前不在 Notes 部分，导航到那里
-        (unless (re-search-backward "^* Notes" nil t)
-          (goto-char (point-max)))
-        
-        ;; 移动到 Notes 部分末尾
-        (goto-char (point-max))
-        
-        ;; 添加新的 entry
-        (insert "** Page " page-num "\n")
-        
-        ;; 添加选中的文本（如果有）
-        (when (and selected-text (not (string-empty-p selected-text)))
-          (insert selected-text "\n\n"))
-        
-        ;; 添加链接 - 使用统一的打开函数
-        (insert "[[elisp:(doc-capture-open \"" file-path "\" " page-num ")][" file-name "]]\n")
-        (insert "\n")
-        
-        ;; 执行后处理钩子（在保存之前，在当前 buffer 中）
-        (when (and doc-capture-enable-hook
-                   (boundp 'doc-capture-post-process-hook)
-                   doc-capture-post-process-hook)
-          (let* ((heading (concat "** Page " page-num))
-                 (selected-text-safe (or selected-text "")))
-            ;; 按顺序执行所有钩子函数
-            (dolist (hook-function doc-capture-post-process-hook)
-              (when (and hook-function (fboundp hook-function))
-                (condition-case err
-                    (funcall hook-function org-file page-num selected-text-safe heading)
-                  (error
-                   (message "doc-capture 钩子函数 %s 执行失败: %s" 
-                           hook-function
-                           (error-message-string err))))))))
-        
-        ;; 保存文件（静默，不提示）- 在 hook 执行之后
-        (write-region (point-min) (point-max) org-file nil 'silent)
-        (set-buffer-modified-p nil))
-      
-      ;; 返回消息，说明是新建还是更新
-      (if is-new-file
-          (message "✓ 已创建新文件并捕获到 %s" org-file)
-        (message "✓ 已捕获到 %s" org-file)))))
+    (unless (file-exists-p org-file)
+      (with-temp-file org-file
+        (insert (format "#+TITLE: %s\n#+AUTHOR: \n#+DATE: %s\n\n* Notes\n\n"
+                        file-base
+                        (format-time-string "%Y-%m-%d %H:%M")))))
+    org-file))
+
+(defun doc-capture--get-page ()
+  "返回当前页码字符串。"
+  (format "%s" (plist-get doc-capture--context :page)))
+
+(defun doc-capture--get-text ()
+  "返回捕获的文本，空文本返回空字符串。"
+  (or (plist-get doc-capture--context :text) ""))
+
+(defun doc-capture--get-link ()
+  "生成 elisp 链接，点击后返回文档对应页。"
+  (let ((file-path (plist-get doc-capture--context :file))
+        (page-num (plist-get doc-capture--context :page)))
+    (format "[[elisp:(doc-capture-open \"%s\" %s)][%s]]"
+            file-path page-num (file-name-nondirectory file-path))))
+
+;;; 主入口函数
+
+(defun doc-capture-process (file-path page-num selected-text &optional _)
+  "外部脚本调用入口，触发 org-capture。
+FILE-PATH: 文档路径
+PAGE-NUM: 页码
+SELECTED-TEXT: 选中的文本"
+  (setq doc-capture--context
+        (list :file file-path :page page-num :text selected-text))
+  (org-capture nil doc-capture-template-key)
+  (run-with-timer 0.1 nil (lambda () (setq doc-capture--context nil))))
+
+;;; Hook
+
+(defvar doc-capture-before-finalize-hook nil
+  "在 doc-capture 完成前运行的 hook。
+在 org-capture finalize 之前调用，可用于添加额外处理（如 org-inc 集成）。")
+
+(defun doc-capture--run-hooks ()
+  "运行 doc-capture 的 finalize hook。"
+  (run-hooks 'doc-capture-before-finalize-hook))
+
+;;; 设置 org-capture 模板
+
+(defun doc-capture--setup-template ()
+  "注册 org-capture 模板。"
+  (setq org-capture-templates
+        (cl-remove-if (lambda (tmpl)
+                        (string= (car tmpl) doc-capture-template-key))
+                      org-capture-templates))
+  (add-to-list 'org-capture-templates
+               `(,doc-capture-template-key
+                 "Document Capture"
+                 entry
+                 (file+headline doc-capture--get-target-file "Notes")
+                 "** Page %(doc-capture--get-page)\n%(doc-capture--get-text)\n\n%(doc-capture--get-link)\n"
+                 :empty-lines 1
+                 :immediate-finish t
+                 :before-finalize (doc-capture--run-hooks))
+               t))
+
+(with-eval-after-load 'org-capture
+  (doc-capture--setup-template))
+
+(when (featurep 'org-capture)
+  (doc-capture--setup-template))
+
+(dolist (ext doc-capture-supported-extensions)
+  (add-to-list 'org-file-apps (cons (concat "\\." ext "\\'") 'default)))
 
 (provide 'doc-capture)
 ;;; doc-capture.el ends here
