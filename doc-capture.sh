@@ -20,10 +20,21 @@ echo "=== $(date) ===" >> "$DEBUG_LOG"
 echo "FILE_PATH: $FILE_PATH" >> "$DEBUG_LOG"
 echo "PAGE_NUM: $PAGE_NUM" >> "$DEBUG_LOG"
 
-# 尝试从不同的 selection 获取文字
-SELECTED_TEXT=$(xclip -out -selection primary 2>/dev/null)
-if [ -z "$SELECTED_TEXT" ]; then
-    SELECTED_TEXT=$(xclip -out -selection clipboard 2>/dev/null)
+# 尝试从剪贴板获取文字（支持 macOS 和 Linux）
+if command -v pbpaste &> /dev/null; then
+    # macOS 使用 pbpaste
+    SELECTED_TEXT=$(pbpaste 2>/dev/null)
+    echo "Using pbpaste (macOS)" >> "$DEBUG_LOG"
+elif command -v xclip &> /dev/null; then
+    # Linux 使用 xclip
+    SELECTED_TEXT=$(xclip -out -selection primary 2>/dev/null)
+    if [ -z "$SELECTED_TEXT" ]; then
+        SELECTED_TEXT=$(xclip -out -selection clipboard 2>/dev/null)
+    fi
+    echo "Using xclip (Linux)" >> "$DEBUG_LOG"
+else
+    echo "Warning: No clipboard tool found (neither pbpaste nor xclip)" >> "$DEBUG_LOG"
+    SELECTED_TEXT=""
 fi
 
 echo "SELECTED_TEXT length: ${#SELECTED_TEXT}" >> "$DEBUG_LOG"
