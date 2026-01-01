@@ -9,7 +9,7 @@
 ** 功能特点
 
 - 支持多种文档格式：PDF, EPUB, DJVU, XPS, CBZ, CBR, MOBI, AZW, AZW3, FB2, PS
-- 支持多种文档查看器：Zathura, MuPDF, Evince, Okular, PDF Tools 等
+- 通过 org-file-apps 配置文档查看器（推荐 Zathura, Okular）
 - 自动将选中的文本保存到同名 org 文件
 - 在 org 文件中自动生成回到原文档页面的链接
 - 简单易用的快捷键操作
@@ -54,6 +54,23 @@ make install
 
 - xclip (用于剪贴板操作)
 - org-inc (增量学习功能)
+
+* org-file-apps 配置
+
+doc-capture 使用 Org-mode 的 =org-file-apps= 配置来打开文档。你需要配置文档查看器的页码跳转：
+
+#+begin_src elisp
+;; 配置 Zathura（推荐）
+(add-to-list 'org-file-apps '("\\.pdf::\\([0-9]+\\)\\'" . "zathura %s -P %1"))
+
+;; 或配置 Okular
+(add-to-list 'org-file-apps '("\\.pdf::\\([0-9]+\\)\\'" . "okular %s --page %1"))
+
+;; 配置其他格式（如 EPUB）
+(add-to-list 'org-file-apps '("\\.epub::\\([0-9]+\\)\\'" . "zathura %s -P %1"))
+#+end_src
+
+*注意*：=%s= 代表文件路径，=%1= 代表页码（从正则表达式捕获组获取）。
 
 * 安装
 
@@ -106,14 +123,8 @@ Emacs 配置：
 ** 基础配置选项
 
 #+begin_src elisp
-;; 选择文档查看器类型
-(setq doc-capture-viewer 'zathura)  ; 可选: zathura, mupdf, evince, okular, pdf-tools, custom
-
 ;; 设置 org 文件保存目录
 (setq doc-capture-org-directory "~/Documents/reading-notes/")
-
-;; 自定义查看器命令（当 viewer 为 custom 时）
-(setq doc-capture-viewer-command "my-viewer %f %p")
 #+end_src
 
 ** 自定义快捷键
@@ -199,7 +210,7 @@ map <C-b> exec "bash ~/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\
 ** Page 42
 这是选中的文本内容
 
-[[elisp:(doc-capture-open "/path/to/document.pdf" 42)][document.pdf]]
+[[file:/path/to/document.pdf::42][document.pdf]]
 #+end_example
 
 *** org-inc 集成后输出
@@ -220,7 +231,7 @@ map <C-b> exec "bash ~/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\
 
 这是选中的文本内容
 
-[[elisp:(doc-capture-open "/path/to/document.pdf" 42)][document.pdf - 第42页]]
+[[file:/path/to/document.pdf::42][document.pdf - 第42页]]
 #+end_example
 
 * 高级功能：后处理钩子
@@ -290,7 +301,7 @@ map <C-b> exec "bash ~/.config/zathura/scripts/doc-capture.sh \"$FILE\" \"$PAGE\
 ,** Page 5
 这里是你选中的文本内容...
 
-[[elisp:(doc-capture-open "/path/to/example.pdf" 5)][example.pdf - 第5页]]
+[[file:/path/to/example.pdf::5][example.pdf]]
 #+end_example
 
 点击链接可以直接跳回到原文档的第 5 页。
