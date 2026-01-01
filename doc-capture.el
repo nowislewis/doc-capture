@@ -55,6 +55,21 @@ nil 表示与文档同目录，否则统一保存到指定目录。"
   :type 'string
   :group 'doc-capture)
 
+(defcustom doc-capture-viewer-command "zathura %s -P %1"
+  "文档查看器命令，用于从 org 文件跳转回文档指定页码。
+%s 代表文件路径，%1 代表页码（从链接中提取）。
+
+常用配置：
+  Zathura: \"zathura %s -P %1\"
+  Okular:  \"okular %s --page %1\"
+  Evince:  \"evince -p %1 %s\"
+  MuPDF:   \"mupdf %s %1\"
+
+设置为 nil 则使用系统默认程序（不支持页码跳转）。"
+  :type '(choice (string :tag "Custom viewer command")
+                 (const :tag "System default (no page jump)" nil))
+  :group 'doc-capture)
+
 ;;; 内部变量
 
 (defvar doc-capture--context nil
@@ -143,8 +158,17 @@ SELECTED-TEXT: 选中的文本"
 (when (featurep 'org-capture)
   (doc-capture--setup-template))
 
-(dolist (ext doc-capture-supported-extensions)
-  (add-to-list 'org-file-apps (cons (concat "\\." ext "\\'") 'default)))
+;;; 配置 org-file-apps 以支持页码跳转
+
+(if doc-capture-viewer-command
+    ;; 使用配置的查看器，支持页码跳转
+    (dolist (ext doc-capture-supported-extensions)
+      (add-to-list 'org-file-apps
+                   (cons (concat "\\." ext "::\\([0-9]+\\)\\'")
+                         doc-capture-viewer-command)))
+  ;; 使用系统默认程序（不支持页码跳转）
+  (dolist (ext doc-capture-supported-extensions)
+    (add-to-list 'org-file-apps (cons (concat "\\." ext "\\'") 'default))))
 
 (provide 'doc-capture)
 ;;; doc-capture.el ends here

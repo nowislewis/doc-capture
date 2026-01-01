@@ -57,22 +57,40 @@ make install
 
 * org-file-apps 配置
 
-doc-capture 使用 Org-mode 的 =org-file-apps= 配置来打开文档。你需要配置文档查看器的页码跳转：
+doc-capture 会自动配置所有支持格式的页码跳转功能。
+
+** 自动配置（推荐）
+
+默认使用 Zathura 作为文档查看器，支持所有格式的页码跳转：
 
 #+begin_src elisp
-;; 配置 Zathura（推荐）
-(add-to-list 'org-file-apps '("\\.pdf::\\([0-9]+\\)\\'" . "zathura %s -P %1"))
-
-;; 或配置 Okular
-(add-to-list 'org-file-apps '("\\.pdf::\\([0-9]+\\)\\'" . "okular %s --page %1"))
-
-;; 配置其他格式（如 EPUB）
-(add-to-list 'org-file-apps '("\\.epub::\\([0-9]+\\)\\'" . "zathura %s -P %1"))
+;; 加载 doc-capture（已自动配置 Zathura）
+(require 'doc-capture)
 #+end_src
 
-*注意*：=%s= 代表文件路径，=%1= 代表页码（从正则表达式捕获组获取）。
+支持的格式：PDF, EPUB, DJVU, XPS, CBZ, CBR, MOBI, AZW, AZW3, FB2, PS
 
-* 安装
+** 自定义查看器
+
+如果你使用其他查看器，可以自定义：
+
+#+begin_src elisp
+;; 使用 Okular
+(setq doc-capture-viewer-command "okular %s --page %1")
+
+;; 使用 Evince
+(setq doc-capture-viewer-command "evince -p %1 %s")
+
+;; 使用 MuPDF
+(setq doc-capture-viewer-command "mupdf %s %1")
+
+;; 使用系统默认程序（不支持页码跳转）
+(setq doc-capture-viewer-command nil)
+
+(require 'doc-capture)
+#+end_src
+
+*注意*：=%s= 代表文件路径，=%1= 代表页码。需要在 =(require 'doc-capture)= *之前*设置。
 
 ** 自动安装（推荐）
 
@@ -123,8 +141,23 @@ Emacs 配置：
 ** 基础配置选项
 
 #+begin_src elisp
-;; 设置 org 文件保存目录
+;; 设置 org 文件保存目录（可选）
 (setq doc-capture-org-directory "~/Documents/reading-notes/")
+
+;; 自定义文档查看器（可选，默认 Zathura）
+(setq doc-capture-viewer-command "zathura %s -P %1")  ; 默认值
+
+;; 其他查看器示例：
+;; (setq doc-capture-viewer-command "okular %s --page %1")
+;; (setq doc-capture-viewer-command "evince -p %1 %s")
+;; (setq doc-capture-viewer-command "mupdf %s %1")
+
+;; 添加或移除支持的格式（可选）
+(setq doc-capture-supported-extensions
+      '("pdf" "epub" "djvu" "xps" "cbz" "cbr" "mobi" "azw" "azw3" "fb2" "ps"))
+
+;; 必须在设置后加载
+(require 'doc-capture)
 #+end_src
 
 ** 自定义快捷键
